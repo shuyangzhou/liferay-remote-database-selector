@@ -15,17 +15,22 @@
 package remote.tasks;
 
 import java.nio.file.Paths;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+
+import javax.swing.JOptionPane;
+
 import org.apache.tools.ant.BuildException;
 import org.apache.tools.ant.Task;
+
 import remote.util.PropertiesUtil;
 
 /**
  * @author tom
  */
-public class CreateTunnelTask extends Task{
+public class CreateTunnelTask extends Task {
 
 	@Override
 	public void execute() throws BuildException {
@@ -38,9 +43,9 @@ public class CreateTunnelTask extends Task{
 			String remoteHost = buildProperties.getProperty("remote.host");
 
 			tunnelTask.add("ssh");
-			tunnelTask.add("-f");
 			tunnelTask.add(
-				buildProperties.getProperty("remote.username") + "@" + remoteHost);
+				buildProperties.getProperty("remote.username") + "@" +
+					remoteHost);
 			tunnelTask.add("-L");
 
 			Properties jdbcSettings = PropertiesUtil.loadProperties(
@@ -56,6 +61,13 @@ public class CreateTunnelTask extends Task{
 			ProcessBuilder processBuilder = new ProcessBuilder(tunnelTask);
 
 			Process process = processBuilder.start();
+
+			if (JOptionPane.showConfirmDialog(
+					null, "click yes to end", "Stop Tunnel",
+					JOptionPane.YES_OPTION) == 0) {
+
+				process.destroy();
+			}
 
 			process.waitFor();
 		}
