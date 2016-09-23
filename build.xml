@@ -2,8 +2,12 @@
 <project name="Liferay-Remote-Database-Selector" default="startDB" basedir="." xmlns:if="ant:if" xmlns:ivy="antlib:org.apache.ivy.ant" xmlns:unless="ant:unless">
 	<property file="build-ext.properties" />
 	<property file="build.properties" />
+	<property file="settings.properties" />
+	<property file="settings-ext.properties" />
 
 	<taskdef classpath="lib/ant-contrib.jar" resource="net/sf/antcontrib/antlib.xml" />
+	<taskdef classpath="lib/jsch-0.1.54.jar" resource="net/sf/antcontrib/antlib.xml" />
+
 
 	<fail unless="portal-ee.dir" message="Required property: portal-ee.dir is not set, please set it to your Portal-EE directory"/>
 	<fail unless="tomcat.dir" message="Required property: tomcat.dir is not set, please set it to your tomcat directory"/>
@@ -27,54 +31,128 @@
 		</sequential>
 	</macrodef>
 
-	<target name="startDB">
-		<compile />
+	<macrodef name="restore">
+		<sequential>
+			<if>
+				<available file="${portal.dir}/portal-impl/test/portal-test-ext.properties.backup" />
+				<then>
+					<move file="${portal.dir}/portal-impl/test/portal-test-ext.properties.backup" tofile="${portal.dir}/portal-impl/test/portal-test-ext.properties" />
+				</then>
+				<else>
+					<delete file="${portal.dir}/portal-impl/test/portal-test-ext.properties" />
+				</else>
+			</if>
 
-		<input unless:set="database.type" message="database: " addproperty="database.type" />
+			<if>
+				<available file="${portal.dir}/portal-impl/src/portal-ext.properties" />
+				<then>
+					<copy file="${portal.dir}/portal-impl/src/portal-ext.properties" tofile="${tomcat.dir}/webapps/ROOT/WEB-INF/classes/portal-ext.properties" overwrite="true" />
+				</then>
+			</if>
+		</sequential>
+	</macrodef>
 
-		<ant antfile="${portal.dir}/build-test.xml" dir="${portal.dir}" target="copy-optional-jars">
-			<property name="database.type" value="${database.type}" />
-			<property name="todir" value="${portal.dir}/lib/development" />
-		</ant>
 
-		<ant antfile="${portal.dir}/build-test.xml" dir="${portal.dir}" target="copy-optional-jars">
-			<property name="database.type" value="${database.type}" />
-			<property name="todir" value="${tomcat.dir}/webapps/ROOT/WEB-INF/lib" />
-		</ant>
+	<macrodef name="startDB">
+		<sequential>
+			<compile />
 
-		<taskdef name="createPropertiesTask" classname="remote.tasks.CreatePropertiesTask" classpath="classes" />
+			<input unless:set="database.type" message="database: " addproperty="database.type" />
 
-		<createPropertiesTask dbType="${database.type}" />
+			<ant antfile="${portal.dir}/build-test.xml" dir="${portal.dir}" target="copy-optional-jars">
+				<property name="database.type" value="${database.type}" />
+				<property name="todir" value="${portal.dir}/lib/development" />
+				<property file="test-ext.properties" />
+			</ant>
 
-		<if>
-			<or>
-				<equals arg1="${database.type}" arg2="db2" />
-				<equals arg1="${database.type}" arg2="oracle" />
-				<equals arg1="${database.type}" arg2="sybase" />
-			</or>
-			<then>
-				<if>
-					<not>
-						<available file="${portal.dir}/modules/private/apps/foundation/portal/portal-dao-db" type="dir" />
-					</not>
-					<then>
-						<copy todir="${portal.dir}/modules/private/apps/foundation/portal/portal-dao-db">
-							<fileset dir="${portal-ee.dir}/modules/private/apps/foundation/portal/portal-dao-db" />
-						</copy>
-					</then>
-				</if>
+			<ant antfile="${portal.dir}/build-test.xml" dir="${portal.dir}" target="copy-optional-jars">
+				<property name="database.type" value="${database.type}" />
+				<property name="todir" value="${tomcat.dir}/webapps/ROOT/WEB-INF/lib" />
+				<property file="test-ext.properties" />
+			</ant>
 
-				<taskdef name="deploydaodbtask" classname="remote.tasks.DeployDaoDBTask" classpath="classes" />
+			<taskdef name="createPropertiesTask" classname="remote.tasks.CreatePropertiesTask" classpath="classes" />
 
-				<deploydaodbtask />
+			<createPropertiesTask dbType="${database.type}" />
 
-				<taskdef name="createTunnelTask" classname="remote.tasks.CreateTunnelTask" classpath="classes" />
+			<if>
+				<or>
+					<equals arg1="${database.type}" arg2="db2" />
+					<equals arg1="${database.type}" arg2="oracle" />
+					<equals arg1="${database.type}" arg2="sybase" />
+				</or>
+				<then>
+					<if>
+						<not>
+							<available file="${portal.dir}/modules/private/apps/foundation/portal/portal-dao-db" type="dir" />
+						</not>
+						<then>
+							<copy todir="${portal.dir}/modules/private/apps/foundation/portal/portal-dao-db">
+								<fileset dir="${portal-ee.dir}/modules/private/apps/foundation/portal/portal-dao-db" />
+							</copy>
+						</then>
+					</if>
 
-				<createTunnelTask dbType="${database.type}" />
+					<taskdef name="deploydaodbtask" classname="remote.tasks.DeployDaoDBTask" classpath="classes" />
 
-				<delete dir="${portal.dir}/modules/private" quiet="true" />
-			</then>
-		</if>
+					<deploydaodbtask />
+
+					<sshsession
+						host="${remote.host}"
+					    username="${remote.username}"
+					    password="${remote.password}"
+					    localtunnels="${ssh.tunneling.port}:localhost:${database.port}"
+					>
+					    <sequential>
+							<input message="Press enter to end" addproperty="test" />
+					    </sequential>
+					</sshsession>
+
+					<delete dir="${portal.dir}/modules/private" quiet="true" />
+
+					<restore />
+				</then>
+			</if>
+		</sequential>
+	</macrodef>
+
+	<target name="startDB-db2">
+		<property name="database.type" value="db2" />
+		<property name="database.port" value="${db2.port}" />
+
+		<startDB />
+	</target>
+
+	<target name="startDB-mysql">
+		<property name="database.type" value="mysql" />
+
+		<property name="database.port" value="${mysql.port}" />
+
+		<startDB />
+	</target>
+
+	<target name="startDB-oracle">
+		<property name="database.type" value="oracle" />
+
+		<property name="database.port" value="${oracle.port}" />
+
+		<startDB />
+	</target>
+
+	<target name="startDB-postgresql">
+		<property name="database.type" value="postgresql" />
+
+		<property name="database.port" value="${postgresql.port}" />
+
+		<startDB />
+	</target>
+
+	<target name="startDB-sybase">
+		<property name="database.type" value="sybase" />
+
+		<property name="database.port" value="${sybase.port}" />
+
+		<startDB />
 	</target>
 
 	<!-- Use portal's source formatter to format source. -->
